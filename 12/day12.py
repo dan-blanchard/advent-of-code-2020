@@ -1,4 +1,5 @@
 import argparse
+import math
 
 import numpy as np
 
@@ -21,34 +22,65 @@ DEGREES_TO_DIRECTION = {
 }
 
 
-def apply_command(position, command):
-    command, val = command[0], int(command[1:])
-    if command == "F":
-        command = DEGREES_TO_DIRECTION[position[2]]
-    position = np.add(
-        position, np.multiply(COMMANDS_TO_TRANSFORMS[command], (val, val, val))
-    )
+def apply_transform(position, transform, val):
+    position = np.add(position, np.multiply(transform, (val, val, val)))
     position[2] = (position[2] + 360) % 360
     return position
 
 
-def run_program(program, verbose):
-    position = (0, 0, 0)
+def apply_command(position, command, waypoint):
+    command, val = command[0], int(command[1:])
+    if waypoint is not None:
+        if command == "F":
+            position = apply_transform(position, waypoint, val)
+        else:
+            if command in ("L", "R"):
+                if command == "R":
+                    val *= -1
+                radians = math.radians(val)
+                waypoint[0], waypoint[1] = (
+                    (waypoint[0] * round(math.cos(radians)))
+                    - (waypoint[1] * round(math.sin(radians))),
+                    (waypoint[1] * round(math.cos(radians)))
+                    + (waypoint[0] * round(math.sin(radians))),
+                )
+
+            else:
+                waypoint = apply_transform(
+                    waypoint, COMMANDS_TO_TRANSFORMS[command], val
+                )
+    else:
+        if command == "F":
+            command = DEGREES_TO_DIRECTION[position[2]]
+        position = apply_transform(position, COMMANDS_TO_TRANSFORMS[command], val)
+    return position, waypoint
+
+
+def run_program(program, verbose, waypoint):
+    position = np.array((0, 0, 0))
     if verbose:
-        print_position(position)
+        print("Ship at ", end="")
+        print_position(position, waypoint is None)
+        if waypoint is not None:
+            print("Waypoint at ", end="")
+            print_position(waypoint, False)
+
     for command in program:
-        position = apply_command(position, command)
+        position, waypoint = apply_command(position, command, waypoint)
         if verbose:
-            print(f"After command {command}: ", end="")
-            print_position(position)
+            print(f"After command {command}: ship at ", end="")
+            print_position(position, waypoint is None)
+            if waypoint is not None:
+                print("\t\tWaypoint at ", end="")
+                print_position(waypoint, False)
     return position
 
 
-def print_position(position):
+def print_position(position, include_facing=True):
     x, y, degrees = position
     print(
-        f"{abs(x)} {'east' if x >= 0 else 'west'}, {abs(y)} {'north' if y >= 0 else 'south'}, "
-        f"facing {DEGREES_TO_DIRECTION[degrees]}"
+        f"{abs(x)} {'east' if x >= 0 else 'west'}, {abs(y)} {'north' if y >= 0 else 'south'}"
+        + (f", facing {DEGREES_TO_DIRECTION[degrees]}" if include_facing else "")
     )
 
 
@@ -68,8 +100,14 @@ def main():
     with open(args.input_file) as f:
         program = [line.strip() for line in f]
     print(f"Number of lines in file: {len(program)}")
-    position = run_program(program, args.verbose)
-    print(f"Manhattan distance from origin: {abs(position[0]) + abs(position[1])}")
+    position = run_program(program, args.verbose, None)
+    print(
+        f"Part 1 Manhattan distance from origin: {abs(position[0]) + abs(position[1])}\n"
+    )
+    position = run_program(program, args.verbose, np.array((10, 1, 0)))
+    print(
+        f"Part 2 Manhattan distance from origin: {abs(position[0]) + abs(position[1])}"
+    )
 
 
 if __name__ == "__main__":
